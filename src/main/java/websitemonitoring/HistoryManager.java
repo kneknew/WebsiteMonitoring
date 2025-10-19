@@ -13,12 +13,14 @@ public class HistoryManager {
         records.add(line);
     }
 
-    public static void exportCsv(File file) {
+    public static void exportTxt(File file) {
         try (FileWriter fw = new FileWriter(file)) {
-            fw.write("timestamp,url,status,httpCode,responseMs\n");
-            for (String s : records) fw.write(s + "\n");
+            for (String s : records) {
+                fw.write(s + "\n");
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
 }

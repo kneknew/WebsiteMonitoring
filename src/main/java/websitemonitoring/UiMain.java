@@ -125,7 +125,7 @@ public class UiMain {
         exportBtn.addActionListener(e -> {
             JFileChooser fc = new JFileChooser();
             if (fc.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
-                HistoryManager.exportCsv(fc.getSelectedFile());
+                HistoryManager.exportTxt(fc.getSelectedFile());
                 JOptionPane.showMessageDialog(frame, "Export thành công");
             }
         });
