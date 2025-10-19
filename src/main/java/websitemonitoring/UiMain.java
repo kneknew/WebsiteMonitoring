@@ -77,7 +77,7 @@ public class UiMain {
         main.add(center, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton exportBtn = new JButton("Export CSV");
+        JButton exportBtn = new JButton("Export TXT");
         JButton chartBtn = new JButton("Xem biểu đồ");
         bottom.add(chartBtn);
         bottom.add(exportBtn);
@@ -129,6 +129,7 @@ public class UiMain {
                 JOptionPane.showMessageDialog(frame, "Export thành công");
             }
         });
+
 
         chartBtn.addActionListener(e -> {
             String selected = urlList.getSelectedValue();
