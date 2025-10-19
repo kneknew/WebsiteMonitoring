@@ -11,21 +11,25 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ChartManager {
+    // Luu lai phan hoi theo website
     private static final Map<String, XYSeries> seriesMap = new HashMap<>();
 
+    // Them du lieu vao bieu do
     public static void updateChart(String url, long responseMs) {
         XYSeries series = seriesMap.computeIfAbsent(url, k -> new XYSeries(k));
         series.add(series.getItemCount(), responseMs);
     }
 
+    // Hien thi bieu do
     public static void showChart(String url) {
         XYSeries series = seriesMap.get(url);
         if (series == null) return;
 
         XYSeriesCollection dataset = new XYSeriesCollection(series);
-        JFreeChart chart = ChartFactory.createXYLineChart("Thời gian phản hồi", "Lần kiểm tra", "ms", dataset);
-        ChartPanel chartPanel = new ChartPanel(chart);
+        JFreeChart chart = ChartFactory.createXYLineChart(
+                "Thời gian phản hồi", "Lần kiểm tra", "ms", dataset);
 
+        ChartPanel chartPanel = new ChartPanel(chart);
         JDialog dialog = new JDialog();
         dialog.setTitle("Biểu đồ - " + url);
         dialog.setSize(600, 400);
