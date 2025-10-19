@@ -42,8 +42,24 @@ public class UiMain {
 
         addBtn.addActionListener(e -> {
             String url = urlField.getText().trim();
-            if (!url.isEmpty()) urlListModel.addElement(url);
+            if (url.isEmpty()) return;
+
+            // Kiểm tra trùng
+            boolean exists = false;
+            for (int i = 0; i < urlListModel.size(); i++) {
+                if (urlListModel.get(i).equalsIgnoreCase(url)) {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (exists) {
+                JOptionPane.showMessageDialog(frame, "Website đã tồn tại trong danh sách!");
+            } else {
+                urlListModel.addElement(url);
+            }
         });
+
 
         removeBtn.addActionListener(e -> {
             int index = urlList.getSelectedIndex();
