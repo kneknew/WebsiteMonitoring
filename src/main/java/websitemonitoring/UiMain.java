@@ -79,8 +79,10 @@ public class UiMain {
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton exportBtn = new JButton("Export TXT");
         JButton chartBtn = new JButton("Xem biểu đồ");
+        JButton clearBtn = new JButton("Xóa lịch sử");
         bottom.add(chartBtn);
         bottom.add(exportBtn);
+        bottom.add(clearBtn);
         main.add(bottom, BorderLayout.SOUTH);
 
         frame.setContentPane(main);
@@ -139,5 +141,15 @@ public class UiMain {
                 JOptionPane.showMessageDialog(frame, "Vui lòng chọn một website để xem biểu đồ");
             }
         });
+        clearBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(frame,
+                    "Bạn có chắc muốn xóa toàn bộ lịch sử?", "Xác nhận", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                HistoryManager.clearHistory();
+                historyArea.setText("");
+                JOptionPane.showMessageDialog(frame, "Đã xóa lịch sử kiểm tra");
+            }
+        });
+
     }
 }

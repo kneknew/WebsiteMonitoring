@@ -9,7 +9,8 @@ public class HistoryManager {
     private static final List<String> records = new ArrayList<>();
 
     public static void addRecord(String timestamp, WebsiteChecker.CheckResult r) {
-        String line = String.format("%s,%s,%s,%d,%d", timestamp, r.url, r.online ? "Online" : "Offline", r.httpCode, r.responseMs);
+        String line = String.format("[%s] %s - %s - HTTP %d - %dms",
+                timestamp, r.url, r.online ? "Online" : "Offline", r.httpCode, r.responseMs);
         records.add(line);
     }
 
@@ -23,4 +24,7 @@ public class HistoryManager {
         }
     }
 
+    public static void clearHistory() {
+        records.clear();
+    }
 }
