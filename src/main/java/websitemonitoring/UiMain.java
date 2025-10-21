@@ -166,11 +166,14 @@ public class UiMain {
         exportBtn.addActionListener(e -> {
             JFileChooser fc = new JFileChooser();
             if (fc.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
-                HistoryManager.exportTxt(fc.getSelectedFile());
-                File fileWithTxt = new File(fc.getSelectedFile().getAbsolutePath());
+                File selectedFile = fc.getSelectedFile();
+                // Luôn thêm ".txt" vào tên file
+                File fileWithTxt = new File(selectedFile.getAbsolutePath() + ".txt");
+                HistoryManager.exportTxt(fileWithTxt);
                 JOptionPane.showMessageDialog(frame, "Export thành công");
             }
         });
+
 //        exportBtn.addActionListener(e -> {
 //            JFileChooser fc = new JFileChooser();
 //            if (fc.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
