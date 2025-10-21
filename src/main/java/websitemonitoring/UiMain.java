@@ -3,6 +3,7 @@ package websitemonitoring;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
@@ -52,6 +53,11 @@ public class UiMain {
         // Duplicate check khi them URL
         addBtn.addActionListener(e -> {
             String url = urlField.getText().trim();
+
+            if (url.equals("https://") || url.equals("http://")) {
+                JOptionPane.showMessageDialog(frame, "Vui long nhap chinh xac url");
+                return;
+            }
             if (url.isEmpty()) return;
 
             boolean exists = false;
@@ -123,6 +129,7 @@ public class UiMain {
                 JOptionPane.showMessageDialog(frame, "Vui lòng thêm ít nhất một URL");
                 return;
             }
+
             startBtn.setEnabled(false);
             stopBtn.setEnabled(true);
             executor = Executors.newScheduledThreadPool(urlListModel.size());
@@ -155,14 +162,26 @@ public class UiMain {
             stopBtn.setEnabled(false);
         });
 
-        // Export ra txt
+//         Export ra txt
         exportBtn.addActionListener(e -> {
             JFileChooser fc = new JFileChooser();
             if (fc.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
                 HistoryManager.exportTxt(fc.getSelectedFile());
+                File fileWithTxt = new File(fc.getSelectedFile().getAbsolutePath());
                 JOptionPane.showMessageDialog(frame, "Export thành công");
             }
         });
+//        exportBtn.addActionListener(e -> {
+//            JFileChooser fc = new JFileChooser();
+//            if (fc.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
+//                File selectedFile = fc.getSelectedFile();
+//                // Luôn thêm ".txt" vào tên file
+//                File fileWithTxt = new File(selectedFile.getAbsolutePath() + ".txt");
+//                HistoryManager.exportTxt(fileWithTxt);
+//                JOptionPane.showMessageDialog(frame, "Export thành công");
+//            }
+//        });
+
 
         // Hien thi bieu do
         chartBtn.addActionListener(e -> {
