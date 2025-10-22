@@ -12,35 +12,18 @@ import java.util.List;
 import java.util.Map;
 
 public class ChartManager {
-    // Luu lai phan hoi theo website
     private static final Map<String, XYSeries> seriesMap = new HashMap<>();
 
-    // Them du lieu vao bieu do
     public static void updateChart(String url, long responseMs) {
         XYSeries series = seriesMap.computeIfAbsent(url, k -> new XYSeries(k));
+        if (series.getItemCount() > 100) {
+            series.remove(0);
+        }
         series.add(series.getItemCount(), responseMs);
     }
 
-    // Hien thi bieu do
-    public static void showChart(String url) {
-        XYSeries series = seriesMap.get(url);
-        if (series == null) return;
-
-        XYSeriesCollection dataset = new XYSeriesCollection(series);
-        JFreeChart chart = ChartFactory.createXYLineChart(
-                "Thời gian phản hồi", "Lần kiểm tra", "ms", dataset);
-
-        ChartPanel chartPanel = new ChartPanel(chart);
-        JDialog dialog = new JDialog();
-        dialog.setTitle("Biểu đồ - " + url);
-        dialog.setSize(600, 400);
-        dialog.setLocationRelativeTo(null);
-        dialog.add(chartPanel);
-        dialog.setVisible(true);
-    }
-    public static void showCombinedChart(List<String> urls) {
+    public static JFreeChart getCombinedChart(List<String> urls) {
         XYSeriesCollection dataset = new XYSeriesCollection();
-
         for (String url : urls) {
             XYSeries series = seriesMap.get(url);
             if (series != null && series.getItemCount() > 0) {
@@ -48,19 +31,8 @@ public class ChartManager {
             }
         }
 
-        if (dataset.getSeriesCount() == 0) return;
-
-        JFreeChart chart = ChartFactory.createXYLineChart(
-                "Biểu đồ tổng hợp thời gian phản hồi",
+        return ChartFactory.createXYLineChart(
+                "Biểu đồ phản hồi tổng hợp",
                 "Lần kiểm tra", "ms", dataset);
-
-        ChartPanel chartPanel = new ChartPanel(chart);
-        JDialog dialog = new JDialog();
-        dialog.setTitle("Biểu đồ tổng hợp");
-        dialog.setSize(700, 500);
-        dialog.setLocationRelativeTo(null);
-        dialog.add(chartPanel);
-        dialog.setVisible(true);
     }
-
 }
