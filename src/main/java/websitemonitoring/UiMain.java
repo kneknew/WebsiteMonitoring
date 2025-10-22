@@ -5,12 +5,15 @@ import org.jfree.chart.JFreeChart;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class UiMain {
     private static final SimpleDateFormat fmt = new SimpleDateFormat("HH:mm:ss");
@@ -25,137 +28,221 @@ public class UiMain {
         frame.setSize(1000, 750);
         frame.setLocationRelativeTo(null);
 
-        // Initial palettes (light by default)
+        // Palettes
         Palette light = new Palette(
                 Color.decode("#FFFFFF"), // background
                 Color.decode("#F5F7FA"), // panel
-                Color.decode("#1976D2"), // primary (buttons/accents)
-                Color.decode("#43A047"), // start
-                Color.decode("#E53935"), // stop
-                Color.decode("#455A64"), // button neutral
-                Color.decode("#212121")  // text
+                Color.BLACK,             // primary (light mode)
+                Color.decode("#2E7D32"), // start (green)
+                Color.decode("#C62828"), // stop (red)
+                Color.decode("#2D6A75"), // button neutral (teal-ish)
+                Color.decode("#212121")  // text (dark)
         );
         Palette dark = new Palette(
-                Color.decode("#263238"), // background
-                Color.decode("#2E3B40"), // panel
-                Color.decode("#29B6F6"), // primary (accent)
-                Color.decode("#66BB6A"), // start
-                Color.decode("#EF5350"), // stop
-                Color.decode("#546E7A"), // button neutral
-                Color.decode("#ECEFF1")  // text
+                Color.decode("#2F3438"), // background (modern dark gray)
+                Color.decode("#353A3E"), // panel (slightly lighter)
+                Color.WHITE,             // primary (dark mode)
+                Color.decode("#7ED957"), // start (bright green)
+                Color.decode("#FF6B6B"), // stop (soft red)
+                Color.decode("#6B7C86"), // button neutral (muted)
+                Color.decode("#E6EEF3")  // text (soft off-white)
         );
 
-        Palette current = light;
+        final AtomicReference<Palette> currentRef = new AtomicReference<>(light);
+        final AtomicBoolean isDark = new AtomicBoolean(false);
+
+        // Fonts
+        final Font titleFont = new Font("Segoe UI", Font.BOLD, 32);
+        final Font defaultFont = new Font("Segoe UI", Font.PLAIN, 14);
+        final Font monoFont = new Font("Consolas", Font.PLAIN, 15);
+        final Font smallFont = new Font("Segoe UI", Font.PLAIN, 13);
 
         JPanel main = new JPanel(new BorderLayout(12, 12));
         main.setBorder(new EmptyBorder(16, 16, 16, 16));
-        main.setBackground(current.background);
+        main.setBackground(currentRef.get().background);
 
         JLabel title = new JLabel("WEBSITE MONITORING", SwingConstants.CENTER);
-        title.setFont(new Font("Segoe UI", Font.BOLD, 30));
-        title.setForeground(current.primary);
+        title.setFont(titleFont);
+        title.setForeground(currentRef.get().primary);
         main.add(title, BorderLayout.NORTH);
 
-        // Center layout similar to previous simpler layout:
-        // Left: URL list + controls. Center: history. South of center: chart.
         JPanel center = new JPanel(new BorderLayout(8, 8));
-        center.setBackground(current.panel);
+        center.setBackground(currentRef.get().panel);
 
-        // URL list
-        DefaultListModel<String> urlListModel = new DefaultListModel<>();
-        JList<String> urlList = new JList<>(urlListModel);
-        urlList.setBorder(BorderFactory.createTitledBorder("Danh sách website"));
+        final DefaultListModel<String> urlListModel = new DefaultListModel<>();
+        final JList<String> urlList = new JList<>(urlListModel);
         urlList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        urlList.setBackground(current.panel);
-        urlList.setForeground(current.text);
-        urlList.setFixedCellHeight(26);
+        urlList.setBackground(currentRef.get().panel);
+        urlList.setForeground(currentRef.get().text);
+        urlList.setFixedCellHeight(30);
+        urlList.setFont(defaultFont);
+
+        // cell renderer: icon + colored text
         urlList.setCellRenderer(new DefaultListCellRenderer() {
+            private final Icon iconOnline = circleIcon(new Color(0x43A047), 12);   // xanh lá
+            private final Icon iconOffline = circleIcon(new Color(0xE53935), 12);  // đỏ
+            private final Icon iconUnknown = circleIcon(new Color(0x9E9E9E), 12);  // xám
+
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index,
                                                           boolean isSelected, boolean cellHasFocus) {
+                Palette p = currentRef.get();
                 JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                label.setFont(defaultFont);
                 String url = value.toString();
+
                 Boolean online = statusMap.get(url);
-                if (online != null) {
-                    label.setForeground(online ? current.start.darker() : current.stop);
+                if (online == null) {
+                    label.setIcon(iconUnknown);
+                    label.setForeground(p.buttonNeutral);
+                } else if (online) {
+                    label.setIcon(iconOnline);
+                    label.setForeground(p.start.darker());
                 } else {
-                    label.setForeground(current.buttonNeutral);
+                    label.setIcon(iconOffline);
+                    label.setForeground(p.stop);
                 }
+
+                label.setIconTextGap(10);
+
                 if (isSelected) {
-                    label.setBackground(current.primary.darker());
+                    Color selBg = p.primary.equals(Color.WHITE) ? new Color(0x1E88E5) : p.primary.darker();
+                    label.setBackground(selBg);
                     label.setForeground(Color.WHITE);
                 } else {
-                    label.setBackground(current.panel);
+                    label.setBackground(p.panel);
                 }
+
                 label.setOpaque(true);
                 return label;
             }
         });
 
-        JScrollPane urlScroll = new JScrollPane(urlList);
-        urlScroll.setPreferredSize(new Dimension(300, 150));
+        // Fix: allow deselect when clicking empty area or clicking same selected item
+        urlList.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                int idx = urlList.locationToIndex(e.getPoint());
+                if (idx == -1) {
+                    urlList.clearSelection();
+                    return;
+                }
+                Rectangle cellBounds = urlList.getCellBounds(idx, idx);
+                if (cellBounds == null || !cellBounds.contains(e.getPoint())) {
+                    urlList.clearSelection();
+                    return;
+                }
+                if (urlList.getSelectedIndex() == idx) {
+                    urlList.clearSelection();
+                }
+            }
+        });
+
+        final JScrollPane urlScroll = new JScrollPane(urlList);
+        urlScroll.setPreferredSize(new Dimension(300, 160));
+        TitledBorder urlBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(currentRef.get().primary), "Danh sách website");
+        urlBorder.setTitleColor(currentRef.get().primary);
+        urlBorder.setTitleFont(defaultFont);
+        urlScroll.setBorder(urlBorder);
         center.add(urlScroll, BorderLayout.WEST);
 
-        // Input row (top of center)
         JPanel inputRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
-        inputRow.setBackground(current.panel);
+        inputRow.setBackground(currentRef.get().panel);
 
-        JTextField urlField = new JTextField("https://", 30);
-        urlField.setBackground(current.background);
-        urlField.setForeground(current.text);
+        final JTextField urlField = new JTextField("https://", 30);
+        urlField.setBackground(currentRef.get().background);
+        urlField.setForeground(currentRef.get().text);
+        urlField.setFont(defaultFont);
+        Dimension urlFieldPref = urlField.getPreferredSize();
 
-        JButton addBtn = new JButton("Thêm");
-        JButton removeBtn = new JButton("Xóa");
+        // Add / Remove buttons styled flat like Start/Stop with same height as urlField
+        final JButton addBtn = new JButton("Thêm");
+        final JButton removeBtn = new JButton("Xóa");
+        addBtn.setFont(defaultFont);
+        removeBtn.setFont(defaultFont);
 
-        addHoverEffect(addBtn, current.primary, current.primary.brighter());
-        addHoverEffect(removeBtn, current.buttonNeutral, current.buttonNeutral.brighter());
+        // Color bases
+        Color addNormal = new Color(0x1976D2); // blue
+        Color addHover = addNormal.brighter();
+        Color remNormal = new Color(0xEF5350); // red
+        Color remHover = remNormal.brighter();
+
+        styleFlatButton(addBtn, addNormal);
+        styleFlatButton(removeBtn, remNormal);
+        addBtn.setPreferredSize(new Dimension(90, urlFieldPref.height));
+        removeBtn.setPreferredSize(new Dimension(90, urlFieldPref.height));
+        addHoverEffect(addBtn, addNormal, addHover);
+        addHoverEffect(removeBtn, remNormal, remHover);
 
         inputRow.add(urlField);
         inputRow.add(addBtn);
         inputRow.add(removeBtn);
-        inputRow.add(new JLabel("Chu kỳ (giây):") {{ setForeground(current.text); }});
-        JSpinner intervalSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3600, 1));
+        JLabel cycleLabel = new JLabel("Chu kỳ (giây):");
+        cycleLabel.setForeground(currentRef.get().text);
+        cycleLabel.setFont(smallFont);
+        inputRow.add(cycleLabel);
+
+        final JSpinner intervalSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3600, 1));
+        intervalSpinner.setFont(defaultFont);
+        Dimension spinnerPref = intervalSpinner.getPreferredSize();
+        spinnerPref.height = urlFieldPref.height;
+        intervalSpinner.setPreferredSize(spinnerPref);
+        setSpinnerColors(intervalSpinner, currentRef.get());
         inputRow.add(intervalSpinner);
 
         center.add(inputRow, BorderLayout.NORTH);
 
-        // History area center
-        JTextArea historyArea = new JTextArea();
+        final JTextArea historyArea = new JTextArea();
         historyArea.setEditable(false);
-        historyArea.setFont(new Font("Consolas", Font.PLAIN, 13));
-        historyArea.setBackground(current.background);
-        historyArea.setForeground(current.text);
-        JScrollPane historyScroll = new JScrollPane(historyArea);
-        historyScroll.setBorder(BorderFactory.createTitledBorder("Lịch sử kiểm tra"));
+        historyArea.setFont(monoFont);
+        historyArea.setBackground(currentRef.get().background);
+        historyArea.setForeground(currentRef.get().text);
+        final JScrollPane historyScroll = new JScrollPane(historyArea);
+        TitledBorder historyBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(currentRef.get().primary), "Lịch sử kiểm tra");
+        historyBorder.setTitleColor(currentRef.get().primary);
+        historyBorder.setTitleFont(defaultFont);
+        historyScroll.setBorder(historyBorder);
+        historyScroll.setPreferredSize(new Dimension(0, 280));
         center.add(historyScroll, BorderLayout.CENTER);
 
-        // Chart panel at south of center
-        ChartPanel chartPanel = new ChartPanel(null);
-        chartPanel.setPreferredSize(new Dimension(600, 300));
-        chartPanel.setBorder(BorderFactory.createTitledBorder("Biểu đồ phản hồi tổng hợp"));
+        final ChartPanel chartPanel = new ChartPanel(null);
+        chartPanel.setPreferredSize(new Dimension(0, 320));
+        TitledBorder chartBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(currentRef.get().primary), "Biểu đồ phản hồi tổng hợp");
+        chartBorder.setTitleColor(currentRef.get().primary);
+        chartBorder.setTitleFont(defaultFont);
+        chartPanel.setBorder(chartBorder);
+        chartPanel.setBackground(currentRef.get().background);
         center.add(chartPanel, BorderLayout.SOUTH);
 
         main.add(center, BorderLayout.CENTER);
 
-        // Bottom panel with Start/Stop and actions (keep simple as previous)
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        bottom.setBackground(current.background);
+        bottom.setBackground(currentRef.get().background);
 
-        JButton startBtn = new JButton("Start");
-        JButton stopBtn = new JButton("Stop");
+        final JButton startBtn = new JButton("Start");
+        final JButton stopBtn = new JButton("Stop");
         stopBtn.setEnabled(false);
+        startBtn.setFont(defaultFont);
+        stopBtn.setFont(defaultFont);
 
-        addHoverEffect(startBtn, current.start, current.start.brighter());
-        addHoverEffect(stopBtn, current.stop, current.stop.brighter());
+        styleFlatButton(startBtn, currentRef.get().start);
+        styleFlatButton(stopBtn, currentRef.get().stop);
+        addHoverEffect(startBtn, currentRef.get().start, currentRef.get().start.brighter());
+        addHoverEffect(stopBtn, currentRef.get().stop, currentRef.get().stop.brighter());
 
-        JButton exportBtn = new JButton("Export TXT");
-        JButton clearBtn = new JButton("Xóa lịch sử");
-        addHoverEffect(exportBtn, current.buttonNeutral, current.buttonNeutral.brighter());
-        addHoverEffect(clearBtn, current.buttonNeutral, current.buttonNeutral.brighter());
+        final JButton exportBtn = new JButton("Export TXT");
+        final JButton clearBtn = new JButton("Xóa lịch sử");
+        exportBtn.setFont(defaultFont);
+        clearBtn.setFont(defaultFont);
+        styleFlatButton(exportBtn, currentRef.get().buttonNeutral);
+        styleFlatButton(clearBtn, currentRef.get().buttonNeutral);
+        addHoverEffect(exportBtn, currentRef.get().buttonNeutral, currentRef.get().buttonNeutral.brighter());
+        addHoverEffect(clearBtn, currentRef.get().buttonNeutral, currentRef.get().buttonNeutral.brighter());
 
-        // Theme toggle (keeps hover)
-        JButton themeToggle = new JButton("Dark Mode");
-        addHoverEffect(themeToggle, current.primary.darker(), current.primary);
+        final JButton themeToggle = new JButton("Dark Mode");
+        themeToggle.setFont(defaultFont);
+        styleFlatButton(themeToggle, currentRef.get().primary.equals(Color.WHITE) ? new Color(0xB0BEC5) : currentRef.get().primary);
+        addHoverEffect(themeToggle, currentRef.get().primary.darker(), currentRef.get().primary);
 
         bottom.add(startBtn);
         bottom.add(stopBtn);
@@ -165,7 +252,10 @@ public class UiMain {
 
         main.add(bottom, BorderLayout.SOUTH);
 
-        // Populate behavior of add/remove
+        frame.setContentPane(main);
+        frame.setVisible(true);
+
+        // Actions
         addBtn.addActionListener(e -> {
             String url = urlField.getText().trim();
             if (url.equals("https://") || url.equals("http://")) {
@@ -184,10 +274,12 @@ public class UiMain {
 
         removeBtn.addActionListener(e -> {
             int idx = urlList.getSelectedIndex();
-            if (idx >= 0) urlListModel.remove(idx);
+            if (idx >= 0) {
+                urlListModel.remove(idx);
+                urlList.clearSelection();
+            }
         });
 
-        // Start action: similar to previous implementation, keep hover and update chartPanel
         startBtn.addActionListener(e -> {
             if (urlListModel.isEmpty()) {
                 JOptionPane.showMessageDialog(frame, "Vui lòng thêm ít nhất một URL");
@@ -200,7 +292,7 @@ public class UiMain {
             executor = Executors.newScheduledThreadPool(Math.max(2, urlListModel.size()));
 
             for (int i = 0; i < urlListModel.size(); i++) {
-                String url = urlListModel.get(i);
+                final String url = urlListModel.get(i);
                 ScheduledFuture<?> task = executor.scheduleAtFixedRate(() -> {
                     WebsiteChecker.CheckResult r = WebsiteChecker.check(url);
                     String ts = fmt.format(new Date());
@@ -215,15 +307,15 @@ public class UiMain {
                         urlList.repaint();
 
                         List<String> urls = Collections.list(urlListModel.elements());
-                        JFreeChart chart = ChartManager.getCombinedChart(urls);
+                        JFreeChart chart = ChartManager.getCombinedChart(urls, isDark.get());
                         chartPanel.setChart(chart);
+                        chartPanel.setBackground(currentRef.get().background);
                     });
                 }, 0, interval, TimeUnit.SECONDS);
                 tasks.add(task);
             }
         });
 
-        // Stop
         stopBtn.addActionListener(e -> {
             for (ScheduledFuture<?> t : tasks) t.cancel(true);
             tasks.clear();
@@ -233,7 +325,6 @@ public class UiMain {
             stopBtn.setEnabled(false);
         });
 
-        // Export
         exportBtn.addActionListener(e -> {
             JFileChooser fc = new JFileChooser();
             if (fc.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
@@ -244,30 +335,112 @@ public class UiMain {
             }
         });
 
-        // Clear history
+        // Clear history: also clear charts and statuses
         clearBtn.addActionListener(e -> {
             int confirm = JOptionPane.showConfirmDialog(frame,
                     "Bạn có chắc muốn xóa toàn bộ lịch sử?", "Xác nhận", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
                 HistoryManager.clearHistory();
                 historyArea.setText("");
-                JOptionPane.showMessageDialog(frame, "Đã xóa lịch sử kiểm tra");
+
+                // Clear chart data and reset panel
+                ChartManager.clearAll();
+                chartPanel.setChart(null);
+                chartPanel.setBackground(currentRef.get().background);
+
+                // clear statuses and selection
+                statusMap.clear();
+                urlList.clearSelection();
+
+                JOptionPane.showMessageDialog(frame, "Đã xóa lịch sử kiểm tra và đặt lại biểu đồ");
             }
         });
 
-        // Theme toggle: swap palettes (keeps hover behavior)
         themeToggle.addActionListener(e -> {
             boolean toDark = "Dark Mode".equals(themeToggle.getText());
             Palette p = toDark ? dark : light;
-            applyPalette(main, p);
+            currentRef.set(p);
+            isDark.set(toDark);
+            applyPalette(main, p, defaultFont, monoFont, smallFont);
+
+            ((TitledBorder) urlScroll.getBorder()).setTitleColor(p.primary);
+            ((TitledBorder) historyScroll.getBorder()).setTitleColor(p.primary);
+            ((TitledBorder) chartPanel.getBorder()).setTitleColor(p.primary);
+
+            title.setForeground(p.primary);
+
+            // Update flat-style buttons to new palette values
+            styleFlatButton(startBtn, p.start);
+            styleFlatButton(stopBtn, p.stop);
+            styleFlatButton(exportBtn, p.buttonNeutral);
+            styleFlatButton(clearBtn, p.buttonNeutral);
+            styleFlatButton(themeToggle, p.primary.equals(Color.WHITE) ? new Color(0xB0BEC5) : p.primary);
+
+            // Update add/remove to theme-appropriate accents and keep same height
+            Color addTheme = addNormalForTheme(toDark);
+            Color remTheme = remNormalForTheme(toDark);
+            styleFlatButton(addBtn, addTheme);
+            styleFlatButton(removeBtn, remTheme);
+            addBtn.setPreferredSize(new Dimension(90, urlField.getPreferredSize().height));
+            removeBtn.setPreferredSize(new Dimension(90, urlField.getPreferredSize().height));
+            addHoverEffect(addBtn, addTheme, addTheme.brighter());
+            addHoverEffect(removeBtn, remTheme, remTheme.brighter());
+
+            // Update spinner colors
+            setSpinnerColors(intervalSpinner, p);
+
+            // refresh chart if any data exists
+            List<String> urls = Collections.list(urlListModel.elements());
+            if (!urls.isEmpty()) {
+                JFreeChart chart = ChartManager.getCombinedChart(urls, isDark.get());
+                chartPanel.setChart(chart);
+            } else {
+                chartPanel.setChart(null);
+            }
+            chartPanel.setBackground(p.background);
+
             themeToggle.setText(toDark ? "Light Mode" : "Dark Mode");
             frame.repaint();
         });
-
-        frame.setContentPane(main);
-        frame.setVisible(true);
     }
 
+    // Helper: create a colored circle icon (static, outside createAndShowGui)
+    private static Icon circleIcon(Color color, int size) {
+        return new Icon() {
+            private final int s = size;
+            @Override public void paintIcon(Component c, Graphics g, int x, int y) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(color);
+                g2.fillOval(x, y, s, s);
+                g2.setColor(new Color(0, 0, 0, 40));
+                g2.drawOval(x, y, s, s);
+                g2.dispose();
+            }
+            @Override public int getIconWidth() { return s; }
+            @Override public int getIconHeight() { return s; }
+        };
+    }
+
+    // Style a button flat like Start/Stop
+    private static void styleFlatButton(JButton b, Color bg) {
+        b.setBackground(bg);
+        b.setForeground(Color.WHITE);
+        b.setFocusPainted(false);
+        b.setBorderPainted(false);
+        b.setOpaque(true);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        b.setMargin(new Insets(8, 12, 8, 12));
+    }
+
+    private static Color addNormalForTheme(boolean dark) {
+        return dark ? new Color(0x1E88E5) : new Color(0x1976D2);
+    }
+    private static Color remNormalForTheme(boolean dark) {
+        return dark ? new Color(0xEF5350) : new Color(0xE53935);
+    }
+
+    // Hover effect used for general buttons
     private static void addHoverEffect(JButton button, Color normal, Color hover) {
         button.setBackground(normal);
         button.setForeground(Color.WHITE);
@@ -284,52 +457,76 @@ public class UiMain {
         });
     }
 
-    private static void applyPalette(Container root, Palette p) {
-        root.setBackground(p.background);
-        for (Component c : root.getComponents()) applyToComponent(c, p);
+    // Helper to set spinner editor colors to match palette
+    private static void setSpinnerColors(JSpinner spinner, Palette p) {
+        try {
+            JComponent editor = spinner.getEditor();
+            if (editor instanceof JSpinner.DefaultEditor) {
+                JTextField tf = ((JSpinner.DefaultEditor) editor).getTextField();
+                tf.setBackground(p.background);
+                tf.setForeground(p.text);
+                tf.setCaretColor(p.text);
+                tf.setBorder(BorderFactory.createLineBorder(p.panel.darker()));
+            }
+            spinner.setBackground(p.background);
+            spinner.setForeground(p.text);
+        } catch (Exception ignored) { }
     }
 
-    private static void applyToComponent(Component comp, Palette p) {
+    private static void applyPalette(Container root, Palette p, Font defaultFont, Font monoFont, Font smallFont) {
+        root.setBackground(p.background);
+        for (Component c : root.getComponents()) applyToComponent(c, p, defaultFont, monoFont, smallFont);
+    }
+
+    private static void applyToComponent(Component comp, Palette p, Font defaultFont, Font monoFont, Font smallFont) {
         if (comp instanceof JPanel) {
             comp.setBackground(p.panel);
-            for (Component child : ((JPanel) comp).getComponents()) applyToComponent(child, p);
+            for (Component child : ((JPanel) comp).getComponents()) applyToComponent(child, p, defaultFont, monoFont, smallFont);
         } else if (comp instanceof JScrollPane) {
             comp.setBackground(p.panel);
             JViewport vp = ((JScrollPane) comp).getViewport();
             if (vp != null && vp.getView() != null) {
                 vp.getView().setBackground(p.background);
                 vp.getView().setForeground(p.text);
+                vp.getView().setFont(defaultFont);
             }
         } else if (comp instanceof JLabel) {
             ((JLabel) comp).setForeground(p.primary);
+            ((JLabel) comp).setFont(defaultFont);
         } else if (comp instanceof JButton) {
             ((JButton) comp).setForeground(Color.WHITE);
-            // keep existing background (hover handles it)
+            ((JButton) comp).setFont(defaultFont);
+            // do not overwrite custom backgrounds (styleFlatButton handles that)
         } else if (comp instanceof JList) {
             ((JList<?>) comp).setBackground(p.panel);
             ((JList<?>) comp).setForeground(p.text);
+            ((JList<?>) comp).setFont(defaultFont);
         } else if (comp instanceof JTextArea) {
             comp.setBackground(p.background);
             comp.setForeground(p.text);
+            comp.setFont(monoFont);
         } else if (comp instanceof JTextField) {
             comp.setBackground(p.background);
             comp.setForeground(p.text);
+            comp.setFont(defaultFont);
         } else if (comp instanceof JSpinner) {
             comp.setBackground(p.background);
             comp.setForeground(p.text);
+            comp.setFont(defaultFont);
+            setSpinnerColors((JSpinner) comp, p);
         } else if (comp instanceof Container) {
-            for (Component child : ((Container) comp).getComponents()) applyToComponent(child, p);
+            for (Component child : ((Container) comp).getComponents()) applyToComponent(child, p, defaultFont, monoFont, smallFont);
         }
     }
 
     private static class Palette {
-        final Color background;
-        final Color panel;
-        final Color primary;
-        final Color start;
-        final Color stop;
-        final Color buttonNeutral;
-        final Color text;
+        Color background;
+        Color panel;
+        Color primary;
+        Color start;
+        Color stop;
+        Color buttonNeutral;
+        Color text;
 
         Palette(Color background, Color panel, Color primary, Color start, Color stop, Color buttonNeutral, Color text) {
             this.background = background;
