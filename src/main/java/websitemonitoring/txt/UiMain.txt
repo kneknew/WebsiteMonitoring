@@ -1,10 +1,5 @@
 package websitemonitoring;
 
-// IMPORT MỚI ĐƯỢỢC THÊM VÀO
-import websitemonitoring.ConfigLoader;
-import websitemonitoring.GeminiClient;
-// KẾT THÚC IMPORT MỚI
-
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 
@@ -206,10 +201,9 @@ public class UiMain {
         Dimension spinnerPref = intervalSpinner.getPreferredSize();
         spinnerPref.height = urlFieldPref.height;
         intervalSpinner.setPreferredSize(spinnerPref);
-
-        // --- ĐẶT MÀU CHO EDITOR KHI KHỞI TẠO ---
         setSpinnerColors(intervalSpinner, currentRef.get());
-
+        // style spinner buttons once with fixed colors (do not change on theme toggle)
+        styleSpinnerButtons(intervalSpinner, new Color(0xEEEEEE), Color.decode("#212121"), new Color(0xCCCCCC));
         inputRow.add(intervalSpinner);
 
         center.add(inputRow, BorderLayout.NORTH);
@@ -474,8 +468,8 @@ public class UiMain {
             addHoverEffect(addBtn, addTheme, addTheme.brighter());
             addHoverEffect(removeBtn, remTheme, remTheme.brighter());
 
-            // --- CẬP NHẬT MÀU SPINNER EDITOR KHI CHUYỂN THEME ---
-            setSpinnerColors(intervalSpinner, p);
+            // NOTE: spinner buttons are intentionally NOT updated here (fixed appearance)
+            setSpinnerColors(intervalSpinner, p); // update editor colors only
 
             // refresh chart if any data exists
             List<String> urls = Collections.list(urlListModel.elements());
@@ -510,68 +504,71 @@ public class UiMain {
                 private int highestSeverity = 0;
 
                 @Override protected Void doInBackground() throws Exception {
-                    // --- ĐÃ SỬA PROMPT ---
                     String prompt = String.format(
-                            "Bạn là chuyên gia phân tích website. Cung cấp thông tin tổng quan (summary), các vấn đề (issues) có thể xảy ra, và hành động đề xuất (recommendedAction) cho một trang web có URL là: %s. CHỈ TRẢ VỀ JSON theo cấu trúc: {summary: string, issues: [{type, severity: int, detail: string}], recommendedAction: string}.",
+                            "Bạn là hệ thống giám sát website. Truy cập URL: %s. Trả về JSON: summary (string), issues (mảng object {type,severity,detail}), recommendedAction (string). severity 1-5. CHỈ TRẢ JSON.",
                             selectedUrl);
-
                     Map<String,Object> resp = gemini.generateWithUrlContext(geminiModel, prompt, selectedUrl, 512, 0.0);
                     ObjectMapper mapper = new ObjectMapper();
                     String raw = mapper.writeValueAsString(resp);
 
-                    // --- LOGIC PARSE JSON MỚI ---
-                    try {
-                        // Cấu trúc trả về: {candidates: [{content: {parts: [{text: "..."}]}}]}
-                        Object candidates = resp.get("candidates");
-                        if (candidates instanceof java.util.Collection && !((java.util.Collection) candidates).isEmpty()) {
-                            Object firstCandidate = ((java.util.Collection) candidates).stream().findFirst().orElse(null);
-                            if (firstCandidate instanceof Map) {
-                                Object content = ((Map) firstCandidate).get("content");
-                                if (content instanceof Map) {
-                                    Object parts = ((Map) content).get("parts");
-                                    if (parts instanceof java.util.Collection && !((java.util.Collection) parts).isEmpty()) {
-                                        Object firstPart = ((java.util.Collection) parts).stream().findFirst().orElse(null);
-                                        if (firstPart instanceof Map) {
-                                            Object text = ((Map) firstPart).get("text");
-                                            if (text instanceof String) {
-                                                // Đây là chuỗi JSON mà chúng ta yêu cầu
-                                                String jsonString = (String) text;
-                                                Map parsed = mapper.readValue(jsonString, Map.class);
-                                                displayText = mapper.writeValueAsString(parsed); // Để hiển thị
+                    Object extracted = null;
+                    if (resp.containsKey("output")) extracted = resp.get("output");
+                    else if (resp.containsKey("candidates")) extracted = resp.get("candidates");
+                    else if (resp.containsKey("results")) extracted = resp.get("results");
+                    else extracted = resp;
 
-                                                // Logic tìm severity (giữ nguyên)
-                                                Object issues = parsed.get("issues");
-                                                if (issues instanceof java.util.Collection) {
-                                                    for (Object o : (java.util.Collection) issues) {
-                                                        if (o instanceof Map) {
-                                                            Object s = ((Map) o).get("severity");
-                                                            try {
-                                                                int sev = Integer.parseInt(String.valueOf(s));
-                                                                highestSeverity = Math.max(highestSeverity, sev);
-                                                            } catch (Exception ignore) {}
-                                                        }
-                                                    }
-                                                }
-                                            }
+                    displayText = mapper.writeValueAsString(extracted);
+
+                    try {
+                        if (extracted instanceof Map) {
+                            Map extMap = (Map) extracted;
+                            Object t = extMap.get("text");
+                            if (t == null) t = extMap.get("content");
+                            if (t instanceof String) {
+                                Map parsed = mapper.readValue((String) t, Map.class);
+                                displayText = mapper.writeValueAsString(parsed);
+                                Object issues = parsed.get("issues");
+                                if (issues instanceof java.util.Collection) {
+                                    for (Object o : (java.util.Collection) issues) {
+                                        if (o instanceof Map) {
+                                            Object s = ((Map) o).get("severity");
+                                            try { int sev = Integer.parseInt(String.valueOf(s)); highestSeverity = Math.max(highestSeverity, sev); } catch (Exception ignore) {}
                                         }
                                     }
                                 }
                             }
+                        } else if (extracted instanceof java.util.Collection) {
+                            java.util.Collection c = (java.util.Collection) extracted;
+                            Object first = c.stream().findFirst().orElse(null);
+                            if (first instanceof Map) {
+                                Object issues = ((Map) first).get("issues");
+                                if (issues instanceof java.util.Collection) {
+                                    for (Object o : (java.util.Collection) issues) {
+                                        if (o instanceof Map) {
+                                            Object s = ((Map) o).get("severity");
+                                            try { int sev = Integer.parseInt(String.valueOf(s)); highestSeverity = Math.max(highestSeverity, sev); } catch (Exception ignore) {}
+                                        }
+                                    }
+                                }
+                            } else if (first instanceof String) {
+                                try {
+                                    Map parsed = mapper.readValue((String) first, Map.class);
+                                    displayText = mapper.writeValueAsString(parsed);
+                                    Object issues = parsed.get("issues");
+                                    if (issues instanceof java.util.Collection) {
+                                        for (Object o : (java.util.Collection) issues) {
+                                            if (o instanceof Map) {
+                                                Object s = ((Map) o).get("severity");
+                                                try { int sev = Integer.parseInt(String.valueOf(s)); highestSeverity = Math.max(highestSeverity, sev); } catch (Exception ignore) {}
+                                            }
+                                        }
+                                    }
+                                } catch (Exception ignored) {}
+                            }
                         }
+                    } catch (Exception ignored) {}
 
-                        // Nếu không tìm thấy text, gán tạm raw response
-                        if (displayText == null) {
-                            displayText = mapper.writeValueAsString(resp);
-                        }
-
-                    } catch (Exception ignored) {
-                        // Nếu lỗi, hiển thị raw response
-                        if (displayText == null) {
-                            displayText = mapper.writeValueAsString(resp);
-                        }
-                    }
                     return null;
-                    // --- KẾT THÚC LOGIC PARSE JSON MỚI ---
                 }
 
                 @Override protected void done() {
@@ -631,6 +628,33 @@ public class UiMain {
         b.setMargin(new Insets(8, 12, 8, 12));
     }
 
+    // Style spinner up/down buttons to match theme (used only at init)
+    private static void styleSpinnerButtons(JSpinner spinner, Color bg, Color fg, Color border) {
+        try {
+            for (Component c : spinner.getComponents()) {
+                if (c instanceof JButton) {
+                    JButton b = (JButton) c;
+                    b.setBackground(bg);
+                    b.setForeground(fg);
+                    b.setBorder(BorderFactory.createLineBorder(border, 1));
+                    b.setFocusPainted(false);
+                    b.setOpaque(true);
+                } else if (c instanceof JComponent) {
+                    for (Component sub : ((JComponent) c).getComponents()) {
+                        if (sub instanceof JButton) {
+                            JButton b = (JButton) sub;
+                            b.setBackground(bg);
+                            b.setForeground(fg);
+                            b.setBorder(BorderFactory.createLineBorder(border, 1));
+                            b.setFocusPainted(false);
+                            b.setOpaque(true);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     private static Color addNormalForTheme(boolean dark) {
         return dark ? new Color(0x1E88E5) : new Color(0x1976D2);
     }
@@ -655,25 +679,21 @@ public class UiMain {
         });
     }
 
-    // --- ĐÃ THÊM LẠI: Phương thức setSpinnerColors ---
     // Helper to set spinner editor colors to match palette
     private static void setSpinnerColors(JSpinner spinner, Palette p) {
         try {
             JComponent editor = spinner.getEditor();
             if (editor instanceof JSpinner.DefaultEditor) {
                 JTextField tf = ((JSpinner.DefaultEditor) editor).getTextField();
-                tf.setBackground(p.background); // Dùng màu nền chính
-                tf.setForeground(p.text);       // Dùng màu chữ chính
+                tf.setBackground(p.background);
+                tf.setForeground(p.text);
                 tf.setCaretColor(p.text);
-                // Có thể bỏ border hoặc dùng border mặc định
-                // tf.setBorder(BorderFactory.createLineBorder(p.panel.darker()));
-                tf.setBorder(UIManager.getBorder("TextField.border")); // Lấy border mặc định
+                tf.setBorder(BorderFactory.createLineBorder(p.panel.darker()));
             }
-            spinner.setBackground(p.background); // Đặt nền cho toàn bộ spinner
+            spinner.setBackground(p.background);
             spinner.setForeground(p.text);
         } catch (Exception ignored) { }
     }
-    // --- KẾT THÚC PHƯƠNG THỨC THÊM ---
 
     // Simple URL validation helper used for import
     private static boolean isValidUrlSimple(String u) {
@@ -720,13 +740,107 @@ public class UiMain {
             comp.setBackground(p.background);
             comp.setForeground(p.text);
             comp.setFont(defaultFont);
-        } else if (comp instanceof JSpinner) { // --- ĐÃ THÊM LẠI KHỐI NÀY ---
+        } else if (comp instanceof JSpinner) {
             comp.setBackground(p.background);
             comp.setForeground(p.text);
             comp.setFont(defaultFont);
-            setSpinnerColors((JSpinner) comp, p); // Gọi hàm để đặt màu editor
+            setSpinnerColors((JSpinner) comp, p); // updates editor only
         } else if (comp instanceof Container) {
             for (Component child : ((Container) comp).getComponents()) applyToComponent(child, p, defaultFont, monoFont, smallFont);
+        }
+    }
+
+    // --- ConfigLoader (search order + read GOOGLE_API_KEY.txt) ---
+    private static final class ConfigLoader {
+        private ConfigLoader() {}
+
+        public static Properties loadConfig() {
+            try {
+                String sys = System.getProperty("config");
+                if (sys != null && !sys.isBlank()) {
+                    Path p = Paths.get(sys);
+                    if (Files.exists(p)) return loadFromPath(p);
+                }
+                String env = System.getenv("CONFIG_PATH");
+                if (env != null && !env.isBlank()) {
+                    Path p = Paths.get(env);
+                    if (Files.exists(p)) return loadFromPath(p);
+                }
+                Path wd = Paths.get("config.properties");
+                if (Files.exists(wd)) return loadFromPath(wd);
+                // also check GOOGLE_API_KEY.txt in project root
+                Path keyTxt = Paths.get("GOOGLE_API_KEY.txt");
+                if (Files.exists(keyTxt)) {
+                    Properties p = new Properties();
+                    String v = Files.readString(keyTxt, StandardCharsets.UTF_8).trim();
+                    if (!v.isBlank()) p.setProperty("google.api.key", v);
+                    return p;
+                }
+                Path home = Paths.get(System.getProperty("user.home"), ".myapp", "config.properties");
+                if (Files.exists(home)) return loadFromPath(home);
+                Path etc = Paths.get("/etc/websitemonitoring/config.properties");
+                if (Files.exists(etc)) return loadFromPath(etc);
+            } catch (Exception ignored) {}
+            return new Properties();
+        }
+
+        private static Properties loadFromPath(Path p) throws IOException {
+            Properties props = new Properties();
+            try (InputStream in = Files.newInputStream(p)) {
+                props.load(in);
+            }
+            return props;
+        }
+
+        public static String getApiKey(Properties p) {
+            String v = p.getProperty("google.api.key");
+            if (v != null && !v.isBlank()) return v.trim();
+            String env = System.getenv("GOOGLE_API_KEY");
+            return (env == null || env.isBlank()) ? null : env.trim();
+        }
+
+        public static String getModel(Properties p) {
+            String m = p.getProperty("gemini.model");
+            return (m == null || m.isBlank()) ? "gemini-pro-1" : m.trim();
+        }
+    }
+
+    // --- GeminiClient simple REST caller ---
+    private static final class GeminiClient {
+        private static final String BASE = "https://generativeai.googleapis.com/v1alpha2/models/";
+        private final HttpClient http;
+        private final ObjectMapper mapper = new ObjectMapper();
+        private final String apiKey;
+
+        GeminiClient(String apiKey) {
+            this.apiKey = apiKey;
+            this.http = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(10))
+                    .build();
+        }
+
+        // synchronous call returning parsed JSON as Map
+        public Map<String,Object> generateWithUrlContext(String model, String prompt, String url, int maxTokens, double temperature) throws Exception {
+            String endpoint = BASE + model + ":generate?key=" + apiKey;
+            Map<String,Object> body = Map.of(
+                    "prompt", Map.of("text", prompt),
+                    "input", Map.of("urlContext", Map.of("urls", new String[]{url})),
+                    "temperature", temperature,
+                    "maxOutputTokens", maxTokens
+            );
+            String json = mapper.writeValueAsString(body);
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .timeout(Duration.ofSeconds(60))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .build();
+
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() / 100 != 2) {
+                throw new RuntimeException("HTTP " + resp.statusCode() + ": " + resp.body());
+            }
+            return mapper.readValue(resp.body(), Map.class);
         }
     }
 
