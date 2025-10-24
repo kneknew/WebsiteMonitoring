@@ -77,7 +77,8 @@ public class UiMain {
         urlList.setFixedCellHeight(30);
         urlList.setFont(defaultFont);
 
-        // cell renderer: icon + colored text
+        
+     // cell renderer: icon + colored text
         urlList.setCellRenderer(new DefaultListCellRenderer() {
             private final Icon iconOnline = circleIcon(new Color(0x43A047), 12);   // xanh lá
             private final Icon iconOffline = circleIcon(new Color(0xE53935), 12);  // đỏ
@@ -118,29 +119,30 @@ public class UiMain {
             }
         });
 
-        // Fix: allow deselect when clicking empty area or clicking same selected item
+        // Allow deselect when clicking empty area or clicking same selected item
         urlList.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
-            public void mousePressed(java.awt.event.MouseEvent e) {
+            public void mouseClicked(java.awt.event.MouseEvent e) {
                 int idx = urlList.locationToIndex(e.getPoint());
-                if (idx == -1) {
+                Rectangle cellBounds = (idx == -1) ? null : urlList.getCellBounds(idx, idx);
+
+                if (idx == -1 || cellBounds == null || !cellBounds.contains(e.getPoint())) {
                     urlList.clearSelection();
+                    urlList.getSelectionModel().clearSelection();
+                    urlList.getParent().requestFocusInWindow(); 
                     return;
                 }
-                Rectangle cellBounds = urlList.getCellBounds(idx, idx);
-                if (cellBounds == null || !cellBounds.contains(e.getPoint())) {
-                    urlList.clearSelection();
-                    return;
-                }
-                if (urlList.getSelectedIndex() == idx) {
-                    urlList.clearSelection();
+
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    urlList.setSelectedIndex(idx);
+                    urlList.requestFocusInWindow();
                 }
             }
         });
 
         final JScrollPane urlScroll = new JScrollPane(urlList);
         urlScroll.setPreferredSize(new Dimension(300, 160));
-        TitledBorder urlBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(currentRef.get().primary), "Danh sách website");
+        TitledBorder urlBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(currentRef.get().primary), "List of Websites");
         urlBorder.setTitleColor(currentRef.get().primary);
         urlBorder.setTitleFont(defaultFont);
         urlScroll.setBorder(urlBorder);
@@ -154,10 +156,29 @@ public class UiMain {
         urlField.setForeground(currentRef.get().text);
         urlField.setFont(defaultFont);
         Dimension urlFieldPref = urlField.getPreferredSize();
+        
+        urlField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            private final String prefix = "https://";
+            private void check() {
+                SwingUtilities.invokeLater(() -> {
+                    String text = urlField.getText();
+                    if (!text.startsWith(prefix)) {
+                        urlField.setText(prefix);
+                        urlField.setCaretPosition(prefix.length());
+                    } else if (urlField.getCaretPosition() < prefix.length()) {
+                        urlField.setCaretPosition(prefix.length());
+                    }
+                });
+            }
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { check(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { check(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) {}
+        });
 
-        // Add / Remove buttons styled flat like Start/Stop with same height as urlField
-        final JButton addBtn = new JButton("Thêm");
-        final JButton removeBtn = new JButton("Xóa");
+
+        // Add / Remove buttons 
+        final JButton addBtn = new JButton("Add");
+        final JButton removeBtn = new JButton("Delete");
         addBtn.setFont(defaultFont);
         removeBtn.setFont(defaultFont);
 
@@ -177,7 +198,7 @@ public class UiMain {
         inputRow.add(urlField);
         inputRow.add(addBtn);
         inputRow.add(removeBtn);
-        JLabel cycleLabel = new JLabel("Chu kỳ (giây):");
+        JLabel cycleLabel = new JLabel("Cycle (seconds):");
         cycleLabel.setForeground(currentRef.get().text);
         cycleLabel.setFont(smallFont);
         inputRow.add(cycleLabel);
@@ -198,7 +219,7 @@ public class UiMain {
         historyArea.setBackground(currentRef.get().background);
         historyArea.setForeground(currentRef.get().text);
         final JScrollPane historyScroll = new JScrollPane(historyArea);
-        TitledBorder historyBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(currentRef.get().primary), "Lịch sử kiểm tra");
+        TitledBorder historyBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(currentRef.get().primary), "Test History");
         historyBorder.setTitleColor(currentRef.get().primary);
         historyBorder.setTitleFont(defaultFont);
         historyScroll.setBorder(historyBorder);
@@ -207,7 +228,7 @@ public class UiMain {
 
         final ChartPanel chartPanel = new ChartPanel(null);
         chartPanel.setPreferredSize(new Dimension(0, 320));
-        TitledBorder chartBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(currentRef.get().primary), "Biểu đồ phản hồi tổng hợp");
+        TitledBorder chartBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(currentRef.get().primary), "Summary Response Chart");
         chartBorder.setTitleColor(currentRef.get().primary);
         chartBorder.setTitleFont(defaultFont);
         chartPanel.setBorder(chartBorder);
@@ -220,7 +241,7 @@ public class UiMain {
         bottom.setBackground(currentRef.get().background);
 
         final JButton startBtn = new JButton("Start");
-        final JButton stopBtn = new JButton("Stop");
+        final JButton stopBtn = new JButton("Pause");
         stopBtn.setEnabled(false);
         startBtn.setFont(defaultFont);
         stopBtn.setFont(defaultFont);
@@ -230,8 +251,8 @@ public class UiMain {
         addHoverEffect(startBtn, currentRef.get().start, currentRef.get().start.brighter());
         addHoverEffect(stopBtn, currentRef.get().stop, currentRef.get().stop.brighter());
 
-        final JButton exportBtn = new JButton("Export TXT");
-        final JButton clearBtn = new JButton("Xóa lịch sử");
+        final JButton exportBtn = new JButton("Export TXT file");
+        final JButton clearBtn = new JButton("Delete history");
         exportBtn.setFont(defaultFont);
         clearBtn.setFont(defaultFont);
         styleFlatButton(exportBtn, currentRef.get().buttonNeutral);
@@ -258,19 +279,36 @@ public class UiMain {
         // Actions
         addBtn.addActionListener(e -> {
             String url = urlField.getText().trim();
+
             if (url.equals("https://") || url.equals("http://")) {
-                JOptionPane.showMessageDialog(frame, "Vui lòng nhập chính xác URL");
+                JOptionPane.showMessageDialog(frame, "Please enter the correct URL");
                 return;
             }
             if (url.isEmpty()) return;
+
+            if (!url.matches("https?://([\\w-]+\\.)+[a-zA-Z]{2,}(/.*)?")) {
+                JOptionPane.showMessageDialog(frame, "Invalid URL! Please enter in correct format");
+                return;
+            }
+
             for (int i = 0; i < urlListModel.size(); i++) {
                 if (urlListModel.get(i).equalsIgnoreCase(url)) {
-                    JOptionPane.showMessageDialog(frame, "Website đã tồn tại trong danh sách!");
+                    JOptionPane.showMessageDialog(frame, "Website already exists in the list!");
                     return;
                 }
             }
+
             urlListModel.addElement(url);
+
+            // keep https:// after add URL
+            if (url.startsWith("https://")) {
+                urlField.setText("https://");
+            } else {
+                urlField.setText("http://");
+            }
+            urlField.requestFocus();
         });
+
 
         removeBtn.addActionListener(e -> {
             int idx = urlList.getSelectedIndex();
@@ -282,7 +320,7 @@ public class UiMain {
 
         startBtn.addActionListener(e -> {
             if (urlListModel.isEmpty()) {
-                JOptionPane.showMessageDialog(frame, "Vui lòng thêm ít nhất một URL");
+                JOptionPane.showMessageDialog(frame, "Please add at least one URL");
                 return;
             }
             startBtn.setEnabled(false);
@@ -331,14 +369,14 @@ public class UiMain {
                 File selectedFile = fc.getSelectedFile();
                 File fileWithTxt = new File(selectedFile.getAbsolutePath() + ".txt");
                 HistoryManager.exportTxt(fileWithTxt);
-                JOptionPane.showMessageDialog(frame, "Export thành công");
+                JOptionPane.showMessageDialog(frame, "Export successful");
             }
         });
 
         // Clear history: also clear charts and statuses
         clearBtn.addActionListener(e -> {
             int confirm = JOptionPane.showConfirmDialog(frame,
-                    "Bạn có chắc muốn xóa toàn bộ lịch sử?", "Xác nhận", JOptionPane.YES_NO_OPTION);
+            		"Are you sure you want to delete all history?", "Confirm", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
                 HistoryManager.clearHistory();
                 historyArea.setText("");
@@ -352,7 +390,7 @@ public class UiMain {
                 statusMap.clear();
                 urlList.clearSelection();
 
-                JOptionPane.showMessageDialog(frame, "Đã xóa lịch sử kiểm tra và đặt lại biểu đồ");
+                JOptionPane.showMessageDialog(frame, "Cleared test history and reset chart");
             }
         });
 
@@ -376,7 +414,7 @@ public class UiMain {
             styleFlatButton(clearBtn, p.buttonNeutral);
             styleFlatButton(themeToggle, p.primary.equals(Color.WHITE) ? new Color(0xB0BEC5) : p.primary);
 
-            // Update add/remove to theme-appropriate accents and keep same height
+            // Update add/remove to 
             Color addTheme = addNormalForTheme(toDark);
             Color remTheme = remNormalForTheme(toDark);
             styleFlatButton(addBtn, addTheme);
@@ -404,7 +442,7 @@ public class UiMain {
         });
     }
 
-    // Helper: create a colored circle icon (static, outside createAndShowGui)
+    // Create a colored circle icon (static, outside createAndShowGui)
     private static Icon circleIcon(Color color, int size) {
         return new Icon() {
             private final int s = size;
@@ -422,7 +460,7 @@ public class UiMain {
         };
     }
 
-    // Style a button flat like Start/Stop
+    // Button style
     private static void styleFlatButton(JButton b, Color bg) {
         b.setBackground(bg);
         b.setForeground(Color.WHITE);

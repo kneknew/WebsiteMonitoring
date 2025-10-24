@@ -31,11 +31,7 @@ public class ChartManager {
         seriesMap.clear();
     }
 
-    /**
-     * Trả về JFreeChart đã được tô màu phù hợp với chế độ dark/light.
-     * @param urls danh sách url (mỗi url có một series nếu tồn tại)
-     * @param darkMode true nếu đang ở Dark Mode, false nếu Light Mode
-     */
+    
     public static JFreeChart getCombinedChart(List<String> urls, boolean darkMode) {
         XYSeriesCollection dataset = new XYSeriesCollection();
         for (String url : urls) {
@@ -46,8 +42,8 @@ public class ChartManager {
         }
 
         JFreeChart chart = ChartFactory.createXYLineChart(
-                "Biểu đồ phản hồi tổng hợp",
-                "Lần kiểm tra",
+                "Summary Response Chart",
+                "The Test",
                 "ms",
                 dataset
         );
